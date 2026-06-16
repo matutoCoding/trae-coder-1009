@@ -485,10 +485,11 @@ export default function FuelSales() {
       memberId: saleForm.paymentMethod === 'member' ? saleForm.selectedMemberId : undefined,
     };
 
-    addSale(newSale);
-    alert('销售记录已添加！');
-    setShowAddModal(false);
-    resetSaleForm();
+    const success = addSale(newSale);
+    if (success) {
+      setShowAddModal(false);
+      resetSaleForm();
+    }
   };
 
   const exportSales = () => {

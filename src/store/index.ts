@@ -38,8 +38,8 @@ interface AppState {
   addDelivery: (delivery: Delivery) => void;
   updateDelivery: (id: string, updates: Partial<Delivery>) => void;
   completeDelivery: (id: string) => void;
-  addSale: (sale: Sale) => void;
-  refundSale: (id: string) => void;
+  addSale: (sale: Sale) => boolean;
+  refundSale: (id: string) => boolean;
   addInventory: (inventory: Inventory) => void;
   addMember: (member: Member) => void;
   updateMember: (id: string, updates: Partial<Member>) => void;
@@ -167,18 +167,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addSale: (sale) => {
+    const tank = get().tanks.find((t) => t.id === sale.tankId);
+    if (tank && tank.volume < sale.volume) {
+      alert(`库存不足！当前库存：${tank.volume.toFixed(2)}L，本次加油：${sale.volume.toFixed(2)}L`);
+      return false;
+    }
+
     const newSales = [sale, ...get().sales];
     set({ sales: newSales });
 
-    const tank = get().tanks.find((t) => t.id === sale.tankId);
     if (tank) {
       const newVolume = tank.volume - sale.volume;
-      const newLevel = Math.min(100, (newVolume / tank.capacity) * 100);
+      const newLevel = Math.min(100, Math.max(0, (newVolume / tank.capacity) * 100));
       const newTanks = get().tanks.map((t) =>
         t.id === tank.id
           ? {
               ...t,
-              volume: newVolume,
+              volume: Math.max(0, newVolume),
               currentLevel: newLevel,
               status: (newLevel < 20 ? 'alert' : newLevel < 40 ? 'warning' : 'normal') as 'alert' | 'warning' | 'normal',
               lastUpdate: new Date().toISOString(),
@@ -210,20 +215,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     saveAll({ ...get(), sales: newSales });
+    return true;
   },
 
   refundSale: (id) => {
     const sale = get().sales.find((s) => s.id === id);
-    if (!sale) return;
+    if (!sale) return false;
+
+    const tank = get().tanks.find((t) => t.id === sale.tankId);
+    if (tank && tank.volume + sale.volume > tank.capacity) {
+      alert(`罐容不足！当前库存：${tank.volume.toFixed(2)}L，回退：${sale.volume.toFixed(2)}L，罐容上限：${tank.capacity.toFixed(2)}L`);
+      return false;
+    }
 
     const newSales = get().sales.map((s) =>
       s.id === id ? { ...s, status: 'refunded' as const } : s
     );
     set({ sales: newSales });
 
-    const tank = get().tanks.find((t) => t.id === sale.tankId);
     if (tank) {
-      const newVolume = tank.volume + sale.volume;
+      const newVolume = Math.min(tank.capacity, tank.volume + sale.volume);
       const newLevel = Math.min(100, (newVolume / tank.capacity) * 100);
       const newTanks = get().tanks.map((t) =>
         t.id === tank.id
@@ -241,7 +252,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const nozzle = get().nozzles.find((n) => n.id === sale.nozzleId);
     if (nozzle) {
-      const newTotalizer = nozzle.totalizer - sale.volume;
+      const newTotalizer = Math.max(0, nozzle.totalizer - sale.volume);
       const newNozzles = get().nozzles.map((n) =>
         n.id === nozzle.id ? { ...n, totalizer: newTotalizer } : n
       );
@@ -252,14 +263,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       const member = get().members.find((m) => m.id === sale.memberId);
       if (member) {
         const newBalance = member.balance + sale.amount;
+        const newPoints = Math.max(0, member.points - Math.floor(sale.amount));
         const newMembers = get().members.map((m) =>
-          m.id === member.id ? { ...m, balance: newBalance } : m
+          m.id === member.id ? { ...m, balance: newBalance, points: newPoints } : m
         );
         set({ members: newMembers });
       }
     }
 
     saveAll({ ...get(), sales: newSales });
+    return true;
   },
 
   addInventory: (inventory) => {

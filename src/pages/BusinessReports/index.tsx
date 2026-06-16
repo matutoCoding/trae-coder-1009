@@ -376,19 +376,45 @@ const BusinessReportsPage: React.FC = () => {
       salesByFuel.push({ fuelType, ...data });
     });
 
+    const futureSalesByTank: Record<string, number> = {};
+    const futureDeliveriesByTank: Record<string, number> = {};
+
+    sales.forEach((s) => {
+      if (s.status !== 'completed') return;
+      const saleDate = s.saleTime.split('T')[0];
+      if (saleDate > dateStr) {
+        if (!futureSalesByTank[s.tankId]) futureSalesByTank[s.tankId] = 0;
+        futureSalesByTank[s.tankId] += s.volume;
+      }
+    });
+
+    deliveries.forEach((d) => {
+      if (d.status !== 'completed') return;
+      const deliveryDate = d.endTime.split('T')[0];
+      if (deliveryDate > dateStr) {
+        if (!futureDeliveriesByTank[d.tankId]) futureDeliveriesByTank[d.tankId] = 0;
+        futureDeliveriesByTank[d.tankId] += d.quantity;
+      }
+    });
+
     const inventoryChanges = tanks.map((tank) => {
-      const endVolume = tank.volume;
-      const salesVolume = salesOnDate.filter((s) => s.tankId === tank.id).reduce((sum, s) => sum + s.volume, 0);
-      const deliveryVolume = deliveriesOnDate.filter((d) => d.tankId === tank.id).reduce((sum, d) => sum + d.quantity, 0);
-      const startVolume = endVolume + salesVolume - deliveryVolume;
+      const todaySales = salesOnDate.filter((s) => s.tankId === tank.id).reduce((sum, s) => sum + s.volume, 0);
+      const todayDeliveries = deliveriesOnDate.filter((d) => d.tankId === tank.id).reduce((sum, d) => sum + d.quantity, 0);
+      
+      const futureSales = futureSalesByTank[tank.id] || 0;
+      const futureDeliveries = futureDeliveriesByTank[tank.id] || 0;
+      
+      const endVolume = Math.max(0, tank.volume - futureDeliveries + futureSales);
+      const startVolume = Math.max(0, endVolume - todayDeliveries + todaySales);
+      
       return {
         tankId: tank.id,
         tankNo: tank.tankNo,
         fuelType: tank.fuelType,
         startVolume,
         endVolume,
-        salesVolume,
-        deliveryVolume,
+        salesVolume: todaySales,
+        deliveryVolume: todayDeliveries,
       };
     });
 
