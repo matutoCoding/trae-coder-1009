@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import {
   Truck,
   Plus,
@@ -22,13 +22,14 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import {
   formatVolume,
+  formatCurrency,
   formatDateTime,
   getStatusText,
   getStatusColor,
   cn,
   generateId,
 } from '../../utils';
-import { Delivery, Tank, FUEL_COLORS } from '../../types';
+import { Delivery, Tank, FUEL_COLORS, FUEL_PRICES } from '../../types';
 
 interface DeliveryForm {
   tankerNo: string;
@@ -37,6 +38,7 @@ interface DeliveryForm {
   fuelType: string;
   tankId: string;
   quantity: number;
+  unitPrice: number;
   density: number;
   temperature: number;
   guardian: string;
@@ -48,7 +50,7 @@ export default function OilDelivery() {
   const tanks = useAppStore((state) => state.tanks);
   const addDelivery = useAppStore((state) => state.addDelivery);
   const updateDelivery = useAppStore((state) => state.updateDelivery);
-  const updateTankLevel = useAppStore((state) => state.updateTankLevel);
+  const completeDeliveryAction = useAppStore((state) => state.completeDelivery);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
@@ -59,14 +61,36 @@ export default function OilDelivery() {
     register,
     handleSubmit,
     reset,
+    control,
+    setValue,
     formState: { errors },
   } = useForm<DeliveryForm>();
 
+  const watchedFuelType = useWatch({ control, name: 'fuelType' });
+  const watchedQuantity = useWatch({ control, name: 'quantity' });
+  const watchedUnitPrice = useWatch({ control, name: 'unitPrice' });
+
+  const calculatedTotalAmount = (watchedQuantity || 0) * (watchedUnitPrice || 0);
+
+  const wholesalePrice = watchedFuelType
+    ? Number(((FUEL_PRICES[watchedFuelType as keyof typeof FUEL_PRICES] || 0) * 0.85).toFixed(2))
+    : 0;
+
+  useEffect(() => {
+    if (watchedFuelType && (!watchedUnitPrice || watchedUnitPrice === 0)) {
+      setValue('unitPrice', wholesalePrice);
+    }
+  }, [watchedFuelType, wholesalePrice, watchedUnitPrice, setValue]);
+
   const onSubmit = (data: DeliveryForm) => {
     const now = new Date();
+    const unitPrice = data.unitPrice || wholesalePrice;
+    const totalAmount = Number((data.quantity * unitPrice).toFixed(2));
     const newDelivery: Delivery = {
       id: generateId(),
       ...data,
+      unitPrice,
+      totalAmount,
       startTime: now.toISOString(),
       endTime: now.toISOString(),
       status: 'pending',
@@ -86,16 +110,7 @@ export default function OilDelivery() {
   };
 
   const completeDelivery = (delivery: Delivery) => {
-    const tank = tanks.find((t) => t.id === delivery.tankId);
-    if (tank) {
-      const newVolume = tank.volume + delivery.quantity;
-      const newLevel = (newVolume / tank.capacity) * 100;
-      updateTankLevel(tank.id, newLevel, newVolume);
-    }
-    updateDelivery(delivery.id, {
-      status: 'completed',
-      endTime: new Date().toISOString(),
-    });
+    completeDeliveryAction(delivery.id);
     setSelectedDelivery(null);
   };
 
@@ -137,6 +152,18 @@ export default function OilDelivery() {
           {row.fuelType}
         </span>
       ),
+    },
+    {
+      key: 'unitPrice',
+      label: '进货单价(元/L)',
+      align: 'right' as const,
+      render: (row: Delivery) => formatCurrency(row.unitPrice) + '/L',
+    },
+    {
+      key: 'totalAmount',
+      label: '卸油金额(元)',
+      align: 'right' as const,
+      render: (row: Delivery) => formatCurrency(row.totalAmount),
     },
     {
       key: 'quantity',
@@ -556,6 +583,38 @@ export default function OilDelivery() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Droplets className="w-4 h-4 inline mr-1" />
+                  进货单价(元/L) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  {...register('unitPrice', { required: '请输入进货单价', valueAsNumber: true })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none transition-all"
+                  placeholder="请输入进货单价"
+                  defaultValue={wholesalePrice || undefined}
+                />
+                {wholesalePrice > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">建议批发价: {formatCurrency(wholesalePrice)}/L (零售价的85%)</p>
+                )}
+                {errors.unitPrice && (
+                  <p className="text-red-500 text-xs mt-1">{errors.unitPrice.message}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Scale className="w-4 h-4 inline mr-1" />
+                  卸油金额(元)
+                </label>
+                <div className="w-full px-4 py-2 border border-gray-100 bg-gray-50 rounded-lg text-lg font-bold text-[#1e3a5f]">
+                  {formatCurrency(calculatedTotalAmount)}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  自动计算: {formatVolume(watchedQuantity || 0)} × {formatCurrency(watchedUnitPrice || 0)}/L
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   <Scale className="w-4 h-4 inline mr-1" />
                   密度(g/cm³)
                 </label>
@@ -640,6 +699,14 @@ export default function OilDelivery() {
                     <span className="font-medium" id="preview-quantity"></span>
                   </div>
                   <div className="flex justify-between">
+                    <span className="text-gray-500">进货单价:</span>
+                    <span className="font-medium">{watchedUnitPrice ? formatCurrency(watchedUnitPrice) + '/L' : '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                    <span className="text-gray-700 font-semibold">卸油总金额:</span>
+                    <span className="font-bold text-[#1e3a5f] text-base">{formatCurrency(calculatedTotalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-gray-500">接收罐:</span>
                     <span className="font-medium" id="preview-tank"></span>
                   </div>
@@ -688,6 +755,14 @@ export default function OilDelivery() {
               <div className="p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-500 mb-1">卸油数量</p>
                 <p className="text-lg font-bold">{formatVolume(selectedDelivery.quantity)}</p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-500 mb-1">进货单价</p>
+                <p className="text-lg font-bold">{formatCurrency(selectedDelivery.unitPrice)}/L</p>
+              </div>
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-gray-500 mb-1">卸油总金额</p>
+                <p className="text-lg font-bold text-[#1e3a5f]">{formatCurrency(selectedDelivery.totalAmount)}</p>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-500 mb-1">密度</p>

@@ -92,10 +92,14 @@ export const generateMockSales = (): Sale[] => {
     const fuelType = fuelTypes[Math.floor(Math.random() * fuelTypes.length)] as typeof fuelTypes[number];
     const volume = Math.random() * 40 + 10;
     const unitPrice = FUEL_PRICES[fuelType as keyof typeof FUEL_PRICES];
+    const tankIdx = fuelTypes.indexOf(fuelType);
+    const tankId = `tank-${String(tankIdx + 1).padStart(3, '0')}`;
+    const nozzleNum = tankIdx * 2 + Math.floor(Math.random() * 2) + 1;
     
     sales.push({
       id: generateId(),
-      nozzleId: `nozzle-${String(Math.floor(Math.random() * 8) + 1).padStart(3, '0')}`,
+      nozzleId: `nozzle-${String(nozzleNum).padStart(3, '0')}`,
+      tankId,
       memberId: Math.random() > 0.5 ? `member-${String(Math.floor(Math.random() * 50) + 1).padStart(3, '0')}` : undefined,
       fuelType,
       volume: Number(volume.toFixed(2)),
@@ -103,7 +107,7 @@ export const generateMockSales = (): Sale[] => {
       amount: Number((volume * unitPrice).toFixed(2)),
       saleTime: subHours(new Date(), Math.random() * 72).toISOString(),
       paymentMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
-      status: 'completed',
+      status: i === 15 || i === 30 ? 'refunded' : 'completed',
     });
   }
   return sales.sort((a, b) => new Date(b.saleTime).getTime() - new Date(a.saleTime).getTime());
@@ -121,6 +125,8 @@ export const generateMockDeliveries = (): Delivery[] => {
     const tankId = `tank-${String(fuelTypes.indexOf(fuelType) + 1).padStart(3, '0')}`;
     const startTime = subDays(new Date(), i * 3);
     const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
+    const unitPrice = Number((FUEL_PRICES[fuelType as keyof typeof FUEL_PRICES] * 0.85).toFixed(2));
+    const quantity = Math.floor(Math.random() * 10000) + 5000;
     
     deliveries.push({
       id: generateId(),
@@ -128,7 +134,9 @@ export const generateMockDeliveries = (): Delivery[] => {
       driverName: drivers[Math.floor(Math.random() * drivers.length)],
       driverPhone: `138${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
       fuelType,
-      quantity: Math.floor(Math.random() * 10000) + 5000,
+      quantity,
+      unitPrice,
+      totalAmount: Number((quantity * unitPrice).toFixed(2)),
       tankId,
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),

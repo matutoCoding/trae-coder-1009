@@ -13,6 +13,7 @@ import {
   Clock,
   AlertCircle,
   CheckCircle,
+  Undo2,
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { DataTable } from '../../components/ui/DataTable';
@@ -36,11 +37,11 @@ import { Sale, FuelNozzle, FUEL_COLORS, FUEL_PRICES } from '../../types';
 export default function FuelSales() {
   const sales = useAppStore((state) => state.sales);
   const nozzles = useAppStore((state) => state.nozzles);
+  const tanks = useAppStore((state) => state.tanks);
   const members = useAppStore((state) => state.members);
   const addSale = useAppStore((state) => state.addSale);
+  const refundSale = useAppStore((state) => state.refundSale);
   const updateNozzle = useAppStore((state) => state.updateNozzle);
-
-  const updateMember = useAppStore((state) => state.updateMember);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
@@ -184,15 +185,22 @@ export default function FuelSales() {
     };
   }, [todaySales]);
 
+  const handleRefundSale = (row: Sale) => {
+    if (row.status !== 'completed') return;
+    if (confirm(`确定要退款该笔销售记录吗？\n金额：${formatCurrency(row.amount)}\n油枪：${nozzles.find((n) => n.id === row.nozzleId)?.nozzleNo || '-'}`)) {
+      refundSale(row.id);
+    }
+  };
+
   const salesColumns = [
     {
       key: 'saleTime',
-      label: '交易时间',
+      label: '时间',
       render: (row: Sale) => formatDateTime(row.saleTime),
     },
     {
       key: 'nozzleId',
-      label: '油枪',
+      label: '油枪号',
       align: 'center' as const,
       render: (row: Sale) => nozzles.find((n) => n.id === row.nozzleId)?.nozzleNo || '-',
     },
@@ -220,7 +228,7 @@ export default function FuelSales() {
     },
     {
       key: 'unitPrice',
-      label: '单价(元)',
+      label: '单价(元/L)',
       align: 'right' as const,
       render: (row: Sale) => row.unitPrice?.toFixed(2) || '-',
     },
@@ -239,13 +247,32 @@ export default function FuelSales() {
       ),
     },
     {
-      key: 'memberId',
-      label: '会员',
+      key: 'status',
+      label: '状态',
       align: 'center' as const,
-      render: (row: Sale) => {
-        const member = members.find((m) => m.id === row.memberId);
-        return member ? member.name : '-';
-      },
+      render: (row: Sale) => (
+        <Badge variant={row.status === 'completed' ? 'success' : 'danger'}>
+          {row.status === 'completed' ? '已完成' : '已退款'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'action',
+      label: '操作',
+      align: 'center' as const,
+      render: (row: Sale) => (
+        <div className="flex gap-2 justify-center">
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={row.status !== 'completed'}
+            onClick={() => handleRefundSale(row)}
+            icon={<Undo2 className="w-3 h-3" />}
+          >
+            退款
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -328,9 +355,11 @@ export default function FuelSales() {
     const paymentMethods: Sale['paymentMethod'][] = ['cash', 'card', 'member', 'wechat', 'alipay'];
 
     if (nozzle) {
+      const tank = tanks.find((t) => t.fuelType === fuelType);
       const newSale: Sale = {
         id: generateId(),
         nozzleId: nozzle.id,
+        tankId: tank?.id || '',
         fuelType,
         volume: Number(volume.toFixed(2)),
         unitPrice,
@@ -437,18 +466,16 @@ export default function FuelSales() {
         alert('会员余额不足');
         return;
       }
-
-      const pointsToAdd = Math.floor(amount);
-      updateMember(member.id, {
-        balance: Number((member.balance - amount).toFixed(2)),
-        points: member.points + pointsToAdd,
-      });
     }
+
+    const saleFuelType = selectedNozzleInfo?.fuelType || saleForm.fuelType;
+    const tank = tanks.find((t) => t.fuelType === saleFuelType);
 
     const newSale: Sale = {
       id: generateId(),
       nozzleId: saleForm.selectedNozzleId,
-      fuelType: selectedNozzleInfo?.fuelType || saleForm.fuelType,
+      tankId: tank?.id || '',
+      fuelType: saleFuelType,
       volume: parseFloat(saleForm.volume),
       unitPrice,
       amount,

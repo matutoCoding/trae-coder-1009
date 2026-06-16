@@ -17,6 +17,8 @@ export interface Delivery {
   driverPhone: string;
   fuelType: string;
   quantity: number;
+  unitPrice: number;
+  totalAmount: number;
   tankId: string;
   startTime: string;
   endTime: string;
@@ -40,6 +42,7 @@ export interface FuelNozzle {
 export interface Sale {
   id: string;
   nozzleId: string;
+  tankId: string;
   memberId?: string;
   fuelType: string;
   volume: number;

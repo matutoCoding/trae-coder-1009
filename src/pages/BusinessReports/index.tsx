@@ -12,6 +12,7 @@ import {
   Printer,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { StatusCard } from '../../components/ui/StatusCard';
@@ -23,9 +24,22 @@ import { FUEL_PRICES, FUEL_COLORS } from '../../types';
 import ReactECharts from 'echarts-for-react';
 
 const BusinessReportsPage: React.FC = () => {
-  const { tanks, sales, deliveries, members, recharges, inventories } = useAppStore();
+  const { tanks, sales, deliveries, members, recharges, inventories, nozzles } = useAppStore();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'daily' | 'trend'>('dashboard');
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['sales']));
+
+  const toggleSection = (key: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const stats = useMemo(() => {
     const today = new Date();
@@ -334,20 +348,24 @@ const BusinessReportsPage: React.FC = () => {
   }, [sales]);
 
   const dailyReportData = useMemo(() => {
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    const daySales = sales.filter((s) => s.saleTime.startsWith(dateStr));
-    const dayDeliveries = deliveries.filter((d) => d.startTime.startsWith(dateStr) && d.status === 'completed');
-    const dayRecharges = recharges.filter((r) => r.rechargeTime.startsWith(dateStr));
+    const dateStr = selectedDate;
+    const salesOnDate = sales.filter((s) => s.saleTime.startsWith(dateStr) && s.status === 'completed');
+    const deliveriesOnDate = deliveries.filter((d) => d.endTime.startsWith(dateStr) && d.status === 'completed');
+    const rechargesOnDate = recharges.filter((r) => r.rechargeTime.startsWith(dateStr));
+    const memberSalesOnDate = salesOnDate.filter((s) => s.paymentMethod === 'member');
     const dayInventories = inventories.filter((i) => i.inventoryDate.startsWith(dateStr));
 
-    const totalSales = daySales.reduce((sum, s) => sum + s.amount, 0);
-    const totalVolume = daySales.reduce((sum, s) => sum + s.volume, 0);
-    const totalRecharge = dayRecharges.reduce((sum, r) => sum + r.amount, 0);
-    const memberConsumption = daySales.filter((s) => s.paymentMethod === 'member').reduce((sum, s) => sum + s.amount, 0);
+    const totalSales = salesOnDate.reduce((sum, s) => sum + s.amount, 0);
+    const totalVolume = salesOnDate.reduce((sum, s) => sum + s.volume, 0);
+    const totalRecharge = rechargesOnDate.reduce((sum, r) => sum + r.amount, 0);
+    const totalRechargeBonus = rechargesOnDate.reduce((sum, r) => sum + r.bonus, 0);
+    const memberConsumption = memberSalesOnDate.reduce((sum, s) => sum + s.amount, 0);
+    const totalDeliveryVolume = deliveriesOnDate.reduce((sum, d) => sum + d.quantity, 0);
+    const totalDeliveryAmount = deliveriesOnDate.reduce((sum, d) => sum + d.totalAmount, 0);
 
     const salesByFuel: { fuelType: string; volume: number; amount: number }[] = [];
     const fuelMap: Record<string, { volume: number; amount: number }> = {};
-    daySales.forEach((s) => {
+    salesOnDate.forEach((s) => {
       if (!fuelMap[s.fuelType]) {
         fuelMap[s.fuelType] = { volume: 0, amount: 0 };
       }
@@ -359,15 +377,16 @@ const BusinessReportsPage: React.FC = () => {
     });
 
     const inventoryChanges = tanks.map((tank) => {
-      const dayStartVolume = tank.volume;
-      const salesVolume = daySales.filter((s) => s.fuelType === tank.fuelType).reduce((sum, s) => sum + s.volume, 0);
-      const deliveryVolume = dayDeliveries.filter((d) => d.tankId === tank.id).reduce((sum, d) => sum + d.quantity, 0);
+      const endVolume = tank.volume;
+      const salesVolume = salesOnDate.filter((s) => s.tankId === tank.id).reduce((sum, s) => sum + s.volume, 0);
+      const deliveryVolume = deliveriesOnDate.filter((d) => d.tankId === tank.id).reduce((sum, d) => sum + d.quantity, 0);
+      const startVolume = endVolume + salesVolume - deliveryVolume;
       return {
         tankId: tank.id,
         tankNo: tank.tankNo,
         fuelType: tank.fuelType,
-        startVolume: dayStartVolume + salesVolume - deliveryVolume,
-        endVolume: tank.volume,
+        startVolume,
+        endVolume,
         salesVolume,
         deliveryVolume,
       };
@@ -381,19 +400,28 @@ const BusinessReportsPage: React.FC = () => {
       totalVolume,
       salesByFuel,
       memberRecharge: totalRecharge,
+      memberRechargeBonus: totalRechargeBonus,
       memberConsumption,
       inventoryChanges,
       profit,
-      transactionCount: daySales.length,
-      rechargeCount: dayRecharges.length,
+      transactionCount: salesOnDate.length,
+      rechargeCount: rechargesOnDate.length,
       inventoryCount: dayInventories.length,
+      totalDeliveryVolume,
+      totalDeliveryAmount,
+      deliveryCount: deliveriesOnDate.length,
+      memberSalesCount: memberSalesOnDate.length,
+      salesOnDate,
+      deliveriesOnDate,
+      rechargesOnDate,
+      memberSalesOnDate,
     };
   }, [selectedDate, sales, deliveries, recharges, inventories, tanks]);
 
   const changeDate = (days: number) => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + days);
-    setSelectedDate(newDate);
+    const current = new Date(selectedDate + 'T00:00:00');
+    current.setDate(current.getDate() + days);
+    setSelectedDate(current.toISOString().split('T')[0]);
   };
 
   const exportReport = () => {
@@ -411,11 +439,17 @@ const BusinessReportsPage: React.FC = () => {
 二、油品销售明细
 ${report.salesByFuel.map((s) => `${s.fuelType}: ${formatVolume(s.volume)} / ${formatCurrency(s.amount)}`).join('\n')}
 
-三、会员业务
-储值金额: ${formatCurrency(report.memberRecharge)} (${report.rechargeCount}笔)
-会员消费: ${formatCurrency(report.memberConsumption)}
+三、卸油入库
+卸油总量: ${formatVolume(report.totalDeliveryVolume)}
+卸油总金额: ${formatCurrency(report.totalDeliveryAmount)}
+卸油次数: ${report.deliveryCount}次
 
-四、库存变动
+四、会员业务
+储值金额: ${formatCurrency(report.memberRecharge)} (${report.rechargeCount}笔)
+赠送金额: ${formatCurrency(report.memberRechargeBonus)}
+会员消费: ${formatCurrency(report.memberConsumption)} (${report.memberSalesCount}笔)
+
+五、库存变动
 ${report.inventoryChanges.map((i) => `${i.tankNo}(${i.fuelType}): 期初 ${formatVolume(i.startVolume)} → 期末 ${formatVolume(i.endVolume)} | 销售 ${formatVolume(i.salesVolume)} | 进油 ${formatVolume(i.deliveryVolume)}`).join('\n')}
 
 生成时间: ${new Date().toLocaleString()}
@@ -549,49 +583,66 @@ ${report.inventoryChanges.map((i) => `${i.tankNo}(${i.fuelType}): 期初 ${forma
 
         {activeTab === 'daily' && (
           <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4 flex-wrap gap-3">
               <Button variant="secondary" size="sm" onClick={() => changeDate(-1)}>
                 <ChevronLeft className="w-4 h-4" />
                 前一天
               </Button>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-gray-500" />
-                <span className="text-lg font-semibold">
-                  {selectedDate.toISOString().split('T')[0]}
-                </span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+                <span className="text-lg font-semibold">{selectedDate}</span>
               </div>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => changeDate(1)}
-                disabled={selectedDate.toISOString().split('T')[0] === new Date().toISOString().split('T')[0]}
+                disabled={selectedDate === new Date().toISOString().split('T')[0]}
               >
                 后一天
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="bg-orange-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-orange-600">
+                <div className="text-2xl font-bold text-orange-600">
                   {formatCurrency(dailyReportData.totalSales)}
                 </div>
                 <div className="text-sm text-gray-600 mt-1">总销售额</div>
               </div>
               <div className="bg-blue-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-blue-600">
+                <div className="text-2xl font-bold text-blue-600">
                   {formatVolume(dailyReportData.totalVolume)}
                 </div>
-                <div className="text-sm text-gray-600 mt-1">总销售量</div>
+                <div className="text-sm text-gray-600 mt-1">总销量</div>
+              </div>
+              <div className="bg-pink-50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-pink-600">
+                  {formatCurrency(dailyReportData.memberConsumption)}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">会员消费</div>
               </div>
               <div className="bg-green-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-green-600">
-                  {dailyReportData.transactionCount}
+                <div className="text-2xl font-bold text-green-600">
+                  {formatCurrency(dailyReportData.memberRecharge)}
                 </div>
-                <div className="text-sm text-gray-600 mt-1">交易笔数</div>
+                <div className="text-sm text-gray-600 mt-1">会员充值</div>
+              </div>
+              <div className="bg-cyan-50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-cyan-600">
+                  {formatVolume(dailyReportData.totalDeliveryVolume)}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">卸油总量</div>
               </div>
               <div className="bg-purple-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-purple-600">
+                <div className="text-2xl font-bold text-purple-600">
                   {formatCurrency(dailyReportData.profit)}
                 </div>
                 <div className="text-sm text-gray-600 mt-1">预估利润</div>
@@ -599,105 +650,263 @@ ${report.inventoryChanges.map((i) => `${i.tankNo}(${i.fuelType}): 期初 ${forma
             </div>
 
             <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-semibold">一、销售概况</h3>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">报告日期</span>
-                    <span className="font-medium">{dailyReportData.reportDate}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">总销售额</span>
-                    <span className="font-medium text-orange-600">{formatCurrency(dailyReportData.totalSales)}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">总销售量</span>
-                    <span className="font-medium">{formatVolume(dailyReportData.totalVolume)}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">交易笔数</span>
-                    <span className="font-medium">{dailyReportData.transactionCount} 笔</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">预估利润(毛利率8%)</span>
-                    <span className="font-medium text-green-600">{formatCurrency(dailyReportData.profit)}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">生成时间</span>
-                    <span className="font-medium">{formatDateTime(new Date().toISOString())}</span>
-                  </div>
+              <div
+                className="flex items-center justify-between px-4 py-3 bg-orange-50 cursor-pointer hover:bg-orange-100 transition-colors"
+                onClick={() => toggleSection('sales')}
+              >
+                <div className="flex items-center gap-2">
+                  {expandedSections.has('sales') ? (
+                    <ChevronDown className="w-5 h-5 text-orange-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-orange-600" />
+                  )}
+                  <h3 className="font-semibold text-gray-800">销售明细汇总</h3>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-600">笔数：<span className="font-semibold text-gray-800">{dailyReportData.transactionCount}笔</span></span>
+                  <span className="text-gray-600">金额：<span className="font-semibold text-orange-600">{formatCurrency(dailyReportData.totalSales)}</span></span>
                 </div>
               </div>
+              {expandedSections.has('sales') && (
+                <div className="p-4">
+                  <DataTable
+                    data={dailyReportData.salesOnDate}
+                    columns={[
+                      { key: 'saleTime', label: '时间', render: (row: any) => formatDateTime(row.saleTime) },
+                      {
+                        key: 'nozzleNo',
+                        label: '油枪',
+                        render: (row: any) => nozzles.find((n) => n.id === row.nozzleId)?.nozzleNo || '-',
+                      },
+                      {
+                        key: 'fuelType',
+                        label: '油品',
+                        render: (row: any) => (
+                          <Badge
+                            style={{ backgroundColor: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] + '20', color: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] }}
+                          >
+                            {row.fuelType}
+                          </Badge>
+                        ),
+                      },
+                      { key: 'volume', label: '数量', render: (row: any) => formatVolume(row.volume) },
+                      { key: 'amount', label: '金额', render: (row: any) => formatCurrency(row.amount) },
+                      {
+                        key: 'paymentMethod',
+                        label: '支付方式',
+                        render: (row: any) => {
+                          const map: Record<string, string> = {
+                            cash: '现金',
+                            card: '银行卡',
+                            member: '会员余额',
+                            wechat: '微信支付',
+                            alipay: '支付宝',
+                          };
+                          return map[row.paymentMethod] || row.paymentMethod;
+                        },
+                      },
+                    ]}
+                    pagination={false}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-semibold">二、油品销售明细</h3>
-              </div>
-              <div className="p-4">
-                <DataTable
-                  data={dailyReportData.salesByFuel}
-                  columns={[
-                    { key: 'fuelType', label: '油品' },
-                    { key: 'volume', label: '销售量(L)', render: (row: any) => formatVolume(row.volume) },
-                    { key: 'amount', label: '销售额(元)', render: (row: any) => formatCurrency(row.amount) },
-                    {
-                      key: 'avgPrice',
-                      label: '平均单价',
-                      render: (row: any) => row.volume > 0 ? formatCurrency(row.amount / row.volume) : '-',
-                    },
-                  ]}
-                  pagination={false}
-                />
-              </div>
-            </div>
-
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-semibold">三、会员业务</h3>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">储值金额</span>
-                    <span className="font-medium text-green-600">{formatCurrency(dailyReportData.memberRecharge)}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">储值笔数</span>
-                    <span className="font-medium">{dailyReportData.rechargeCount} 笔</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">会员消费</span>
-                    <span className="font-medium text-orange-600">{formatCurrency(dailyReportData.memberConsumption)}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b">
-                    <span className="text-gray-600">盘点次数</span>
-                    <span className="font-medium">{dailyReportData.inventoryCount} 次</span>
-                  </div>
+              <div
+                className="flex items-center justify-between px-4 py-3 bg-cyan-50 cursor-pointer hover:bg-cyan-100 transition-colors"
+                onClick={() => toggleSection('deliveries')}
+              >
+                <div className="flex items-center gap-2">
+                  {expandedSections.has('deliveries') ? (
+                    <ChevronDown className="w-5 h-5 text-cyan-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-cyan-600" />
+                  )}
+                  <h3 className="font-semibold text-gray-800">卸油入库明细</h3>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-600">笔数：<span className="font-semibold text-gray-800">{dailyReportData.deliveryCount}笔</span></span>
+                  <span className="text-gray-600">数量：<span className="font-semibold text-cyan-600">{formatVolume(dailyReportData.totalDeliveryVolume)}</span></span>
+                  <span className="text-gray-600">金额：<span className="font-semibold text-gray-800">{formatCurrency(dailyReportData.totalDeliveryAmount)}</span></span>
                 </div>
               </div>
+              {expandedSections.has('deliveries') && (
+                <div className="p-4">
+                  <DataTable
+                    data={dailyReportData.deliveriesOnDate}
+                    columns={[
+                      { key: 'tankerNo', label: '油罐车' },
+                      {
+                        key: 'fuelType',
+                        label: '油品',
+                        render: (row: any) => (
+                          <Badge
+                            style={{ backgroundColor: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] + '20', color: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] }}
+                          >
+                            {row.fuelType}
+                          </Badge>
+                        ),
+                      },
+                      { key: 'quantity', label: '数量', render: (row: any) => formatVolume(row.quantity) },
+                      { key: 'unitPrice', label: '单价', render: (row: any) => formatCurrency(row.unitPrice) },
+                      { key: 'totalAmount', label: '金额', render: (row: any) => formatCurrency(row.totalAmount) },
+                      {
+                        key: 'tankId',
+                        label: '油罐',
+                        render: (row: any) => tanks.find((t) => t.id === row.tankId)?.tankNo || '-',
+                      },
+                      { key: 'endTime', label: '完成时间', render: (row: any) => formatDateTime(row.endTime) },
+                    ]}
+                    pagination={false}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-semibold">四、库存变动</h3>
+              <div
+                className="flex items-center justify-between px-4 py-3 bg-pink-50 cursor-pointer hover:bg-pink-100 transition-colors"
+                onClick={() => toggleSection('memberSales')}
+              >
+                <div className="flex items-center gap-2">
+                  {expandedSections.has('memberSales') ? (
+                    <ChevronDown className="w-5 h-5 text-pink-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-pink-600" />
+                  )}
+                  <h3 className="font-semibold text-gray-800">会员消费明细</h3>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-600">笔数：<span className="font-semibold text-gray-800">{dailyReportData.memberSalesCount}笔</span></span>
+                  <span className="text-gray-600">金额：<span className="font-semibold text-pink-600">{formatCurrency(dailyReportData.memberConsumption)}</span></span>
+                </div>
               </div>
-              <div className="p-4">
-                <DataTable
-                  data={dailyReportData.inventoryChanges}
-                  columns={[
-                    { key: 'tankNo', label: '油罐' },
-                    { key: 'fuelType', label: '油品' },
-                    { key: 'startVolume', label: '期初库存(L)', render: (row: any) => formatVolume(row.startVolume) },
-                    { key: 'deliveryVolume', label: '进油量(L)', render: (row: any) => formatVolume(row.deliveryVolume) },
-                    { key: 'salesVolume', label: '销售量(L)', render: (row: any) => formatVolume(row.salesVolume) },
-                    { key: 'endVolume', label: '期末库存(L)', render: (row: any) => formatVolume(row.endVolume) },
-                  ]}
-                  pagination={false}
-                />
+              {expandedSections.has('memberSales') && (
+                <div className="p-4">
+                  <DataTable
+                    data={dailyReportData.memberSalesOnDate}
+                    columns={[
+                      {
+                        key: 'memberName',
+                        label: '会员姓名',
+                        render: (row: any) => members.find((m) => m.id === row.memberId)?.name || '-',
+                      },
+                      {
+                        key: 'cardNo',
+                        label: '卡号',
+                        render: (row: any) => members.find((m) => m.id === row.memberId)?.cardNo || '-',
+                      },
+                      {
+                        key: 'fuelType',
+                        label: '油品',
+                        render: (row: any) => (
+                          <Badge
+                            style={{ backgroundColor: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] + '20', color: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] }}
+                          >
+                            {row.fuelType}
+                          </Badge>
+                        ),
+                      },
+                      { key: 'volume', label: '数量', render: (row: any) => formatVolume(row.volume) },
+                      { key: 'amount', label: '金额', render: (row: any) => formatCurrency(row.amount) },
+                      { key: 'saleTime', label: '时间', render: (row: any) => formatDateTime(row.saleTime) },
+                    ]}
+                    pagination={false}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="border rounded-lg overflow-hidden">
+              <div
+                className="flex items-center justify-between px-4 py-3 bg-green-50 cursor-pointer hover:bg-green-100 transition-colors"
+                onClick={() => toggleSection('recharges')}
+              >
+                <div className="flex items-center gap-2">
+                  {expandedSections.has('recharges') ? (
+                    <ChevronDown className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-green-600" />
+                  )}
+                  <h3 className="font-semibold text-gray-800">会员充值明细</h3>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-600">笔数：<span className="font-semibold text-gray-800">{dailyReportData.rechargeCount}笔</span></span>
+                  <span className="text-gray-600">充值：<span className="font-semibold text-green-600">{formatCurrency(dailyReportData.memberRecharge)}</span></span>
+                  <span className="text-gray-600">赠送：<span className="font-semibold text-amber-600">{formatCurrency(dailyReportData.memberRechargeBonus)}</span></span>
+                </div>
               </div>
+              {expandedSections.has('recharges') && (
+                <div className="p-4">
+                  <DataTable
+                    data={dailyReportData.rechargesOnDate}
+                    columns={[
+                      {
+                        key: 'memberName',
+                        label: '会员姓名',
+                        render: (row: any) => members.find((m) => m.id === row.memberId)?.name || '-',
+                      },
+                      {
+                        key: 'cardNo',
+                        label: '卡号',
+                        render: (row: any) => members.find((m) => m.id === row.memberId)?.cardNo || '-',
+                      },
+                      { key: 'amount', label: '充值金额', render: (row: any) => formatCurrency(row.amount) },
+                      { key: 'bonus', label: '赠送金额', render: (row: any) => formatCurrency(row.bonus) },
+                      { key: 'rechargeTime', label: '充值时间', render: (row: any) => formatDateTime(row.rechargeTime) },
+                      { key: 'operator', label: '操作员' },
+                    ]}
+                    pagination={false}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="border rounded-lg overflow-hidden">
+              <div
+                className="flex items-center justify-between px-4 py-3 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors"
+                onClick={() => toggleSection('inventory')}
+              >
+                <div className="flex items-center gap-2">
+                  {expandedSections.has('inventory') ? (
+                    <ChevronDown className="w-5 h-5 text-amber-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-amber-600" />
+                  )}
+                  <h3 className="font-semibold text-gray-800">库存变动明细</h3>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-600">油罐：<span className="font-semibold text-gray-800">{dailyReportData.inventoryChanges.length}个</span></span>
+                  <span className="text-gray-600">盘点：<span className="font-semibold text-amber-600">{dailyReportData.inventoryCount}次</span></span>
+                </div>
+              </div>
+              {expandedSections.has('inventory') && (
+                <div className="p-4">
+                  <DataTable
+                    data={dailyReportData.inventoryChanges}
+                    columns={[
+                      { key: 'tankNo', label: '油罐' },
+                      {
+                        key: 'fuelType',
+                        label: '油品',
+                        render: (row: any) => (
+                          <Badge
+                            style={{ backgroundColor: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] + '20', color: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] }}
+                          >
+                            {row.fuelType}
+                          </Badge>
+                        ),
+                      },
+                      { key: 'startVolume', label: '期初库存', render: (row: any) => formatVolume(row.startVolume) },
+                      { key: 'deliveryVolume', label: '当日卸油', render: (row: any) => formatVolume(row.deliveryVolume) },
+                      { key: 'salesVolume', label: '当日销售', render: (row: any) => formatVolume(row.salesVolume) },
+                      { key: 'endVolume', label: '期末库存', render: (row: any) => formatVolume(row.endVolume) },
+                    ]}
+                    pagination={false}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

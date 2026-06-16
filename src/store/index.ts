@@ -37,7 +37,9 @@ interface AppState {
 
   addDelivery: (delivery: Delivery) => void;
   updateDelivery: (id: string, updates: Partial<Delivery>) => void;
+  completeDelivery: (id: string) => void;
   addSale: (sale: Sale) => void;
+  refundSale: (id: string) => void;
   addInventory: (inventory: Inventory) => void;
   addMember: (member: Member) => void;
   updateMember: (id: string, updates: Partial<Member>) => void;
@@ -102,6 +104,57 @@ export const useAppStore = create<AppState>((set, get) => ({
   addDelivery: (delivery) => {
     const newDeliveries = [delivery, ...get().deliveries];
     set({ deliveries: newDeliveries });
+
+    if (delivery.status === 'completed') {
+      const tank = get().tanks.find((t) => t.id === delivery.tankId);
+      if (tank) {
+        const newVolume = Math.min(tank.capacity, tank.volume + delivery.quantity);
+        const newLevel = Math.min(100, (newVolume / tank.capacity) * 100);
+        const newTanks = get().tanks.map((t) =>
+          t.id === tank.id
+            ? {
+                ...t,
+                volume: newVolume,
+                currentLevel: newLevel,
+                status: (newLevel < 20 ? 'alert' : newLevel < 40 ? 'warning' : 'normal') as 'alert' | 'warning' | 'normal',
+                lastUpdate: new Date().toISOString(),
+              }
+            : t
+        );
+        set({ tanks: newTanks });
+      }
+    }
+
+    saveAll({ ...get(), deliveries: newDeliveries });
+  },
+
+  completeDelivery: (id) => {
+    const delivery = get().deliveries.find((d) => d.id === id);
+    if (!delivery) return;
+
+    const newDeliveries = get().deliveries.map((d) =>
+      d.id === id ? { ...d, status: 'completed' as const, endTime: new Date().toISOString() } : d
+    );
+    set({ deliveries: newDeliveries });
+
+    const tank = get().tanks.find((t) => t.id === delivery.tankId);
+    if (tank) {
+      const newVolume = Math.min(tank.capacity, tank.volume + delivery.quantity);
+      const newLevel = Math.min(100, (newVolume / tank.capacity) * 100);
+      const newTanks = get().tanks.map((t) =>
+        t.id === tank.id
+          ? {
+              ...t,
+              volume: newVolume,
+              currentLevel: newLevel,
+              status: (newLevel < 20 ? 'alert' : newLevel < 40 ? 'warning' : 'normal') as 'alert' | 'warning' | 'normal',
+              lastUpdate: new Date().toISOString(),
+            }
+          : t
+      );
+      set({ tanks: newTanks });
+    }
+
     saveAll({ ...get(), deliveries: newDeliveries });
   },
 
@@ -116,6 +169,96 @@ export const useAppStore = create<AppState>((set, get) => ({
   addSale: (sale) => {
     const newSales = [sale, ...get().sales];
     set({ sales: newSales });
+
+    const tank = get().tanks.find((t) => t.id === sale.tankId);
+    if (tank) {
+      const newVolume = tank.volume - sale.volume;
+      const newLevel = Math.min(100, (newVolume / tank.capacity) * 100);
+      const newTanks = get().tanks.map((t) =>
+        t.id === tank.id
+          ? {
+              ...t,
+              volume: newVolume,
+              currentLevel: newLevel,
+              status: (newLevel < 20 ? 'alert' : newLevel < 40 ? 'warning' : 'normal') as 'alert' | 'warning' | 'normal',
+              lastUpdate: new Date().toISOString(),
+            }
+          : t
+      );
+      set({ tanks: newTanks });
+    }
+
+    const nozzle = get().nozzles.find((n) => n.id === sale.nozzleId);
+    if (nozzle) {
+      const newTotalizer = nozzle.totalizer + sale.volume;
+      const newNozzles = get().nozzles.map((n) =>
+        n.id === nozzle.id ? { ...n, totalizer: newTotalizer } : n
+      );
+      set({ nozzles: newNozzles });
+    }
+
+    if (sale.paymentMethod === 'member' && sale.memberId) {
+      const member = get().members.find((m) => m.id === sale.memberId);
+      if (member) {
+        const newBalance = member.balance - sale.amount;
+        const newPoints = member.points + Math.floor(sale.amount);
+        const newMembers = get().members.map((m) =>
+          m.id === member.id ? { ...m, balance: newBalance, points: newPoints } : m
+        );
+        set({ members: newMembers });
+      }
+    }
+
+    saveAll({ ...get(), sales: newSales });
+  },
+
+  refundSale: (id) => {
+    const sale = get().sales.find((s) => s.id === id);
+    if (!sale) return;
+
+    const newSales = get().sales.map((s) =>
+      s.id === id ? { ...s, status: 'refunded' as const } : s
+    );
+    set({ sales: newSales });
+
+    const tank = get().tanks.find((t) => t.id === sale.tankId);
+    if (tank) {
+      const newVolume = tank.volume + sale.volume;
+      const newLevel = Math.min(100, (newVolume / tank.capacity) * 100);
+      const newTanks = get().tanks.map((t) =>
+        t.id === tank.id
+          ? {
+              ...t,
+              volume: newVolume,
+              currentLevel: newLevel,
+              status: (newLevel < 20 ? 'alert' : newLevel < 40 ? 'warning' : 'normal') as 'alert' | 'warning' | 'normal',
+              lastUpdate: new Date().toISOString(),
+            }
+          : t
+      );
+      set({ tanks: newTanks });
+    }
+
+    const nozzle = get().nozzles.find((n) => n.id === sale.nozzleId);
+    if (nozzle) {
+      const newTotalizer = nozzle.totalizer - sale.volume;
+      const newNozzles = get().nozzles.map((n) =>
+        n.id === nozzle.id ? { ...n, totalizer: newTotalizer } : n
+      );
+      set({ nozzles: newNozzles });
+    }
+
+    if (sale.paymentMethod === 'member' && sale.memberId) {
+      const member = get().members.find((m) => m.id === sale.memberId);
+      if (member) {
+        const newBalance = member.balance + sale.amount;
+        const newMembers = get().members.map((m) =>
+          m.id === member.id ? { ...m, balance: newBalance } : m
+        );
+        set({ members: newMembers });
+      }
+    }
+
     saveAll({ ...get(), sales: newSales });
   },
 

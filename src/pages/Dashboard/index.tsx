@@ -288,6 +288,16 @@ export default function Dashboard() {
       align: 'center' as const,
       render: (row: Sale) => getPaymentMethodText(row.paymentMethod),
     },
+    {
+      key: 'status',
+      label: '状态',
+      align: 'center' as const,
+      render: (row: Sale) => (
+        <Badge variant={row.status === 'completed' ? 'success' : 'danger'} size="sm">
+          {row.status === 'completed' ? '已完成' : '已退款'}
+        </Badge>
+      ),
+    },
   ];
 
   const recentDeliveriesColumns = [
@@ -316,6 +326,12 @@ export default function Dashboard() {
       label: '数量(L)',
       align: 'right' as const,
       render: (row: Delivery) => formatVolume(row.quantity),
+    },
+    {
+      key: 'totalAmount',
+      label: '金额(元)',
+      align: 'right' as const,
+      render: (row: Delivery) => <span className="font-semibold">{formatCurrency(row.totalAmount)}</span>,
     },
     {
       key: 'status',
