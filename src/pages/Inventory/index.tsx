@@ -206,32 +206,32 @@ const InventoryPage: React.FC = () => {
   }, [inventories]);
 
   const columns = [
-    { key: 'inventoryDate', label: '盘点时间', render: (v: string) => formatDateTime(v) },
+    { key: 'inventoryDate', label: '盘点时间', render: (row: any) => formatDateTime(row.inventoryDate) },
     {
       key: 'tankId',
       label: '油罐',
-      render: (v: string) => {
-        const tank = tanks.find((t) => t.id === v);
+      render: (row: any) => {
+        const tank = tanks.find((t) => t.id === row.tankId);
         return tank ? `${tank.tankNo} (${tank.fuelType})` : '-';
       },
     },
-    { key: 'bookQuantity', label: '账面数量(L)', render: (v: number) => v?.toFixed(2) || '-' },
-    { key: 'actualQuantity', label: '实际数量(L)', render: (v: number) => v?.toFixed(2) || '-' },
+    { key: 'bookQuantity', label: '账面数量(L)', render: (row: any) => row.bookQuantity?.toFixed(2) || '-' },
+    { key: 'actualQuantity', label: '实际数量(L)', render: (row: any) => row.actualQuantity?.toFixed(2) || '-' },
     {
       key: 'difference',
       label: '差异(L)',
-      render: (v: number) => (
-        <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>
-          {v >= 0 ? '+' : ''}{v?.toFixed(2) || '-'}
+      render: (row: any) => (
+        <span className={row.difference >= 0 ? 'text-green-600' : 'text-red-600'}>
+          {row.difference >= 0 ? '+' : ''}{row.difference?.toFixed(2) || '-'}
         </span>
       ),
     },
     {
       key: 'differenceRate',
       label: '差异率',
-      render: (v: number) => (
-        <span className={Math.abs(v) <= 0.3 ? 'text-green-600' : 'text-red-600'}>
-          {v >= 0 ? '+' : ''}{v?.toFixed(2) || '-'}%
+      render: (row: any) => (
+        <span className={Math.abs(row.differenceRate) <= 0.3 ? 'text-green-600' : 'text-red-600'}>
+          {row.differenceRate >= 0 ? '+' : ''}{row.differenceRate?.toFixed(2) || '-'}%
         </span>
       ),
     },
@@ -239,9 +239,9 @@ const InventoryPage: React.FC = () => {
     {
       key: 'status',
       label: '状态',
-      render: (v: string) => (
-        <Badge variant={v === 'normal' ? 'success' : 'danger'}>
-          {v === 'normal' ? '正常' : '异常'}
+      render: (row: any) => (
+        <Badge variant={row.status === 'normal' ? 'success' : 'danger'}>
+          {row.status === 'normal' ? '正常' : '异常'}
         </Badge>
       ),
     },

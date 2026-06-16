@@ -138,12 +138,11 @@ const MemberManagementPage: React.FC = () => {
     return members.filter((m) => {
       if (searchKeyword) {
         const keyword = searchKeyword.toLowerCase();
-        if (
-          !m.name.toLowerCase().includes(keyword) &&
-          !m.phone.includes(keyword) &&
-          !m.cardNo.toLowerCase().includes(keyword) &&
-          (m.licensePlate || '').toLowerCase().includes(keyword)
-        ) {
+        const matchName = m.name.toLowerCase().includes(keyword);
+        const matchPhone = m.phone.includes(keyword);
+        const matchCardNo = m.cardNo.toLowerCase().includes(keyword);
+        const matchLicensePlate = (m.licensePlate || '').toLowerCase().includes(keyword);
+        if (!matchName && !matchPhone && !matchCardNo && !matchLicensePlate) {
           return false;
         }
       }
@@ -358,42 +357,42 @@ const MemberManagementPage: React.FC = () => {
     {
       key: 'cardNo',
       label: '会员卡号',
-      render: (v: string, row: Member) => (
+      render: (row: Member) => (
         <div className="flex items-center gap-2">
           {React.createElement(levelIcons[row.level], {
             className: `w-4 h-4 ${levelColors[row.level]}`,
           })}
-          <span className="font-medium">{v}</span>
+          <span className="font-medium">{row.cardNo}</span>
         </div>
       ),
     },
     { key: 'name', label: '姓名' },
     { key: 'phone', label: '手机号' },
-    { key: 'licensePlate', label: '车牌号', render: (v: string) => v || '-' },
+    { key: 'licensePlate', label: '车牌号', render: (row: Member) => row.licensePlate || '-' },
     {
       key: 'level',
       label: '等级',
-      render: (v: string) => <Badge variant="info">{levelNames[v]}</Badge>,
+      render: (row: Member) => <Badge variant="info">{levelNames[row.level]}</Badge>,
     },
     {
       key: 'balance',
       label: '余额',
-      render: (v: number) => <span className="font-semibold text-orange-600">{formatCurrency(v)}</span>,
+      render: (row: Member) => <span className="font-semibold text-orange-600">{formatCurrency(row.balance)}</span>,
     },
-    { key: 'points', label: '积分', render: (v: number) => v.toLocaleString() },
+    { key: 'points', label: '积分', render: (row: Member) => row.points.toLocaleString() },
     {
       key: 'status',
       label: '状态',
-      render: (v: string) => (
-        <Badge variant={v === 'active' ? 'success' : v === 'inactive' ? 'warning' : 'danger'}>
-          {v === 'active' ? '正常' : v === 'inactive' ? '停用' : '冻结'}
+      render: (row: Member) => (
+        <Badge variant={row.status === 'active' ? 'success' : row.status === 'inactive' ? 'warning' : 'danger'}>
+          {row.status === 'active' ? '正常' : row.status === 'inactive' ? '停用' : '冻结'}
         </Badge>
       ),
     },
     {
       key: 'createTime',
       label: '注册时间',
-      render: (v: string) => formatDateTime(v),
+      render: (row: Member) => formatDateTime(row.createTime),
     },
   ];
 
@@ -402,16 +401,16 @@ const MemberManagementPage: React.FC = () => {
     {
       key: 'memberId',
       label: '会员',
-      render: (v: string) => {
-        const member = members.find((m) => m.id === v);
+      render: (row: Recharge) => {
+        const member = members.find((m) => m.id === row.memberId);
         return member ? `${member.name} (${member.cardNo})` : '-';
       },
     },
-    { key: 'amount', label: '充值金额', render: (v: number) => formatCurrency(v) },
-    { key: 'bonus', label: '赠送金额', render: (v: number) => formatCurrency(v) },
+    { key: 'amount', label: '充值金额', render: (row: Recharge) => formatCurrency(row.amount) },
+    { key: 'bonus', label: '赠送金额', render: (row: Recharge) => formatCurrency(row.bonus) },
     { key: 'paymentMethod', label: '支付方式' },
     { key: 'operator', label: '操作员' },
-    { key: 'rechargeTime', label: '充值时间', render: (v: string) => formatDateTime(v) },
+    { key: 'rechargeTime', label: '充值时间', render: (row: Recharge) => formatDateTime(row.rechargeTime) },
   ];
 
   const exchangeColumns = [
@@ -419,16 +418,16 @@ const MemberManagementPage: React.FC = () => {
     {
       key: 'memberId',
       label: '会员',
-      render: (v: string) => {
-        const member = members.find((m) => m.id === v);
+      render: (row: PointExchange) => {
+        const member = members.find((m) => m.id === row.memberId);
         return member ? `${member.name} (${member.cardNo})` : '-';
       },
     },
     { key: 'gift', label: '兑换礼品' },
-    { key: 'points', label: '消耗积分', render: (v: number) => v.toLocaleString() },
-    { key: 'giftValue', label: '礼品价值', render: (v: number) => formatCurrency(v) },
+    { key: 'points', label: '消耗积分', render: (row: PointExchange) => row.points.toLocaleString() },
+    { key: 'giftValue', label: '礼品价值', render: (row: PointExchange) => formatCurrency(row.giftValue) },
     { key: 'operator', label: '操作员' },
-    { key: 'exchangeTime', label: '兑换时间', render: (v: string) => formatDateTime(v) },
+    { key: 'exchangeTime', label: '兑换时间', render: (row: PointExchange) => formatDateTime(row.exchangeTime) },
   ];
 
   return (

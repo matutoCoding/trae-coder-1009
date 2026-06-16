@@ -47,6 +47,7 @@ interface AppState {
   updateFireFacility: (id: string, updates: Partial<FireFacility>) => void;
   updateLightningProtection: (id: string, updates: Partial<LightningProtection>) => void;
   updateTankLevel: (id: string, level: number, volume: number) => void;
+  updateNozzle: (id: string, updates: Partial<FuelNozzle>) => void;
 }
 
 const saveAll = (state: Partial<AppState>) => {
@@ -200,6 +201,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     set({ tanks: newTanks });
     saveAll({ ...get(), tanks: newTanks });
+  },
+
+  updateNozzle: (id, updates) => {
+    const newNozzles = get().nozzles.map((n) =>
+      n.id === id ? { ...n, ...updates } : n
+    );
+    set({ nozzles: newNozzles });
+    saveAll({ ...get(), nozzles: newNozzles });
   },
 
   toggleSidebar: () => {

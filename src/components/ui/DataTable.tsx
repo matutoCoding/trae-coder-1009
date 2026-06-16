@@ -5,7 +5,7 @@ import { cn } from '../../utils';
 interface Column<T> {
   key: string;
   label: string;
-  render?: (value: any, row: T) => ReactNode;
+  render?: (row: T) => ReactNode;
   width?: string;
   align?: 'left' | 'center' | 'right';
 }
@@ -113,7 +113,7 @@ export function DataTable<T extends Record<string, any>>({
                         col.align === 'right' && 'text-right'
                       )}
                     >
-                      {col.render ? col.render(row[col.key], row) : row[col.key]}
+                      {col.render ? col.render(row) : row[col.key]}
                     </td>
                   ))}
                 </tr>

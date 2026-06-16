@@ -38,10 +38,27 @@ export default function FuelSales() {
   const nozzles = useAppStore((state) => state.nozzles);
   const members = useAppStore((state) => state.members);
   const addSale = useAppStore((state) => state.addSale);
+  const updateNozzle = useAppStore((state) => state.updateNozzle);
+
+  const updateMember = useAppStore((state) => state.updateMember);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
   const [selectedNozzle, setSelectedNozzle] = useState<FuelNozzle | null>(null);
+  const [calibrationForm, setCalibrationForm] = useState({
+    standardReading: '',
+    displayReading: '',
+    inspector: '',
+    result: 'pass',
+    remarks: '',
+  });
+  const [saleForm, setSaleForm] = useState({
+    selectedNozzleId: '',
+    fuelType: '',
+    volume: '',
+    paymentMethod: 'cash' as Sale['paymentMethod'],
+    selectedMemberId: '',
+  });
   const [filters, setFilters] = useState({
     fuelType: '',
     paymentMethod: '',
@@ -291,10 +308,7 @@ export default function FuelSales() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => {
-              setSelectedNozzle(row);
-              setShowCalibrationModal(true);
-            }}
+            onClick={() => handleOpenCalibration(row)}
             icon={<Wrench className="w-3 h-3" />}
           >
             校验
@@ -327,6 +341,127 @@ export default function FuelSales() {
       };
       addSale(newSale);
     }
+  };
+
+  const handleOpenCalibration = (nozzle: FuelNozzle) => {
+    setSelectedNozzle(nozzle);
+    setCalibrationForm({
+      standardReading: nozzle.totalizer.toString(),
+      displayReading: nozzle.totalizer.toString(),
+      inspector: '',
+      result: 'pass',
+      remarks: '',
+    });
+    setShowCalibrationModal(true);
+  };
+
+  const handleSaveCalibration = () => {
+    if (!selectedNozzle) return;
+    if (!calibrationForm.standardReading || !calibrationForm.displayReading || !calibrationForm.inspector) {
+      alert('请填写完整的校验信息');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const nextDate = new Date();
+    nextDate.setMonth(nextDate.getMonth() + 3);
+    const nextCalibrationDate = nextDate.toISOString().split('T')[0];
+
+    updateNozzle(selectedNozzle.id, {
+      lastCalibrationDate: today,
+      nextCalibrationDate: nextCalibrationDate,
+      totalizer: Number(calibrationForm.standardReading),
+    });
+
+    alert('校验记录已保存！');
+    setShowCalibrationModal(false);
+    setSelectedNozzle(null);
+  };
+
+  const activeNozzles = nozzles.filter((n) => n.status === 'active');
+
+  const selectedNozzleInfo = nozzles.find((n) => n.id === saleForm.selectedNozzleId);
+
+  const unitPrice = selectedNozzleInfo
+    ? FUEL_PRICES[selectedNozzleInfo.fuelType as keyof typeof FUEL_PRICES]
+    : 0;
+
+  const amount = saleForm.volume && unitPrice
+    ? Number((parseFloat(saleForm.volume) * unitPrice).toFixed(2))
+    : 0;
+
+  const selectedMember = members.find((m) => m.id === saleForm.selectedMemberId);
+
+  const activeMembers = members.filter((m) => m.status === 'active');
+
+  const handleNozzleChange = (nozzleId: string) => {
+    const nozzle = nozzles.find((n) => n.id === nozzleId);
+    setSaleForm({
+      ...saleForm,
+      selectedNozzleId: nozzleId,
+      fuelType: nozzle?.fuelType || '',
+    });
+  };
+
+  const resetSaleForm = () => {
+    setSaleForm({
+      selectedNozzleId: '',
+      fuelType: '',
+      volume: '',
+      paymentMethod: 'cash',
+      selectedMemberId: '',
+    });
+  };
+
+  const handleAddSale = () => {
+    if (!saleForm.selectedNozzleId) {
+      alert('请选择油枪');
+      return;
+    }
+    if (!saleForm.volume || parseFloat(saleForm.volume) <= 0) {
+      alert('请输入有效的加油数量');
+      return;
+    }
+    if (saleForm.paymentMethod === 'member' && !saleForm.selectedMemberId) {
+      alert('请选择会员');
+      return;
+    }
+
+    if (saleForm.paymentMethod === 'member') {
+      const member = members.find((m) => m.id === saleForm.selectedMemberId);
+      if (!member) {
+        alert('会员不存在');
+        return;
+      }
+      if (member.balance < amount) {
+        alert('会员余额不足');
+        return;
+      }
+
+      const pointsToAdd = Math.floor(amount);
+      updateMember(member.id, {
+        balance: Number((member.balance - amount).toFixed(2)),
+        points: member.points + pointsToAdd,
+      });
+    }
+
+    const newSale: Sale = {
+      id: generateId(),
+      nozzleId: saleForm.selectedNozzleId,
+      fuelType: selectedNozzleInfo?.fuelType || saleForm.fuelType,
+      volume: parseFloat(saleForm.volume),
+      unitPrice,
+      amount,
+      saleTime: new Date().toISOString(),
+      paymentMethod: saleForm.paymentMethod,
+      status: 'completed',
+      memberId: saleForm.paymentMethod === 'member' ? saleForm.selectedMemberId : undefined,
+    };
+
+    addSale(newSale);
+    alert('销售记录已添加！');
+    setShowAddModal(false);
+    resetSaleForm();
   };
 
   const exportSales = () => {
@@ -408,10 +543,7 @@ export default function FuelSales() {
                     ? 'border-amber-200 bg-amber-50'
                     : 'border-gray-200 bg-gray-50'
                 )}
-                onClick={() => {
-                  setSelectedNozzle(nozzle);
-                  setShowCalibrationModal(true);
-                }}
+                onClick={() => handleOpenCalibration(nozzle)}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-semibold text-sm">{nozzle.nozzleNo}</span>
@@ -467,6 +599,9 @@ export default function FuelSales() {
         <div className="flex gap-3">
           {activeSubTab === 'sales' && (
             <>
+              <Button onClick={() => setShowAddModal(true)} icon={<Plus className="w-4 h-4" />}>
+                新增销售
+              </Button>
               <Button variant="secondary" onClick={handleQuickAddSale} icon={<Plus className="w-4 h-4" />}>
                 模拟交易
               </Button>
@@ -578,11 +713,7 @@ export default function FuelSales() {
               取消
             </Button>
             <Button
-              onClick={() => {
-                alert('校验记录已保存！');
-                setShowCalibrationModal(false);
-                setSelectedNozzle(null);
-              }}
+              onClick={handleSaveCalibration}
             >
               保存校验
             </Button>
@@ -620,6 +751,8 @@ export default function FuelSales() {
                 <input
                   type="number"
                   step="0.01"
+                  value={calibrationForm.standardReading}
+                  onChange={(e) => setCalibrationForm({ ...calibrationForm, standardReading: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none"
                   placeholder="请输入标准量器读数"
                 />
@@ -631,6 +764,8 @@ export default function FuelSales() {
                 <input
                   type="number"
                   step="0.01"
+                  value={calibrationForm.displayReading}
+                  onChange={(e) => setCalibrationForm({ ...calibrationForm, displayReading: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none"
                   placeholder="请输入油枪显示量"
                 />
@@ -639,7 +774,11 @@ export default function FuelSales() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   校验人 *
                 </label>
-                <select className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none">
+                <select
+                  value={calibrationForm.inspector}
+                  onChange={(e) => setCalibrationForm({ ...calibrationForm, inspector: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none"
+                >
                   <option value="">请选择校验人</option>
                   <option value="陈站长">陈站长</option>
                   <option value="刘班长">刘班长</option>
@@ -652,14 +791,28 @@ export default function FuelSales() {
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2">
-                    <input type="radio" name="result" value="pass" className="text-[#1e3a5f]" />
+                    <input
+                      type="radio"
+                      name="result"
+                      value="pass"
+                      checked={calibrationForm.result === 'pass'}
+                      onChange={() => setCalibrationForm({ ...calibrationForm, result: 'pass' })}
+                      className="text-[#1e3a5f]"
+                    />
                     <span className="flex items-center gap-1">
                       <CheckCircle className="w-4 h-4 text-green-500" />
                       合格
                     </span>
                   </label>
                   <label className="flex items-center gap-2">
-                    <input type="radio" name="result" value="fail" className="text-[#1e3a5f]" />
+                    <input
+                      type="radio"
+                      name="result"
+                      value="fail"
+                      checked={calibrationForm.result === 'fail'}
+                      onChange={() => setCalibrationForm({ ...calibrationForm, result: 'fail' })}
+                      className="text-[#1e3a5f]"
+                    />
                     <span className="flex items-center gap-1">
                       <AlertCircle className="w-4 h-4 text-red-500" />
                       不合格
@@ -673,6 +826,8 @@ export default function FuelSales() {
                 </label>
                 <textarea
                   rows={3}
+                  value={calibrationForm.remarks}
+                  onChange={(e) => setCalibrationForm({ ...calibrationForm, remarks: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none resize-none"
                   placeholder="请输入备注信息"
                 />
@@ -680,6 +835,187 @@ export default function FuelSales() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => {
+          setShowAddModal(false);
+          resetSaleForm();
+        }}
+        title="新增销售"
+        size="md"
+        footer={
+          <div className="flex gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowAddModal(false);
+                resetSaleForm();
+              }}
+            >
+              取消
+            </Button>
+            <Button onClick={handleAddSale}>
+              确认提交
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              选择油枪 <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={saleForm.selectedNozzleId}
+              onChange={(e) => handleNozzleChange(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none"
+            >
+              <option value="">请选择油枪</option>
+              {activeNozzles.map((nozzle) => (
+                <option key={nozzle.id} value={nozzle.id}>
+                  {nozzle.nozzleNo} - {nozzle.fuelType}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                油品类型
+              </label>
+              <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+                {saleForm.fuelType || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                单价(元/L)
+              </label>
+              <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+                {unitPrice ? unitPrice.toFixed(2) : '-'}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              加油数量(L) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={saleForm.volume}
+              onChange={(e) => setSaleForm({ ...saleForm, volume: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none"
+              placeholder="请输入加油数量"
+            />
+          </div>
+
+          <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">应付金额</span>
+              <span className="text-2xl font-bold text-[#f59e0b]">
+                ¥{amount.toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              支付方式 <span className="text-red-500">*</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 'cash', label: '现金' },
+                { value: 'card', label: '银行卡' },
+                { value: 'member', label: '会员余额' },
+                { value: 'wechat', label: '微信支付' },
+                { value: 'alipay', label: '支付宝' },
+              ].map((method) => (
+                <label
+                  key={method.value}
+                  className={cn(
+                    'flex items-center justify-center px-3 py-2 border rounded-lg cursor-pointer transition-all text-sm',
+                    saleForm.paymentMethod === method.value
+                      ? 'border-[#1e3a5f] bg-[#1e3a5f] text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value={method.value}
+                    checked={saleForm.paymentMethod === method.value}
+                    onChange={() => setSaleForm({ ...saleForm, paymentMethod: method.value as Sale['paymentMethod'] })}
+                    className="sr-only"
+                  />
+                  {method.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {saleForm.paymentMethod === 'member' && (
+            <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  选择会员 <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={saleForm.selectedMemberId}
+                  onChange={(e) => setSaleForm({ ...saleForm, selectedMemberId: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent outline-none"
+                >
+                  <option value="">请选择会员</option>
+                  {activeMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} - {member.phone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedMember && (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">会员姓名</p>
+                    <p className="font-semibold text-gray-800">{selectedMember.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">会员卡号</p>
+                    <p className="font-semibold text-gray-800">{selectedMember.cardNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">当前余额</p>
+                    <p className="font-semibold text-[#10b981]">¥{selectedMember.balance.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">当前积分</p>
+                    <p className="font-semibold text-[#f59e0b]">{selectedMember.points} 分</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedMember && selectedMember.balance < amount && (
+                <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>余额不足，还差 ¥{(amount - selectedMember.balance).toFixed(2)}</span>
+                </div>
+              )}
+
+              {selectedMember && selectedMember.balance >= amount && (
+                <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-2 rounded-lg">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>余额充足，消费后将获得 {Math.floor(amount)} 积分</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

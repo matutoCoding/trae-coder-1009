@@ -432,20 +432,20 @@ ${report.inventoryChanges.map((i) => `${i.tankNo}(${i.fuelType}): 期初 ${forma
     {
       key: 'fuelType',
       label: '油品',
-      render: (v: string) => (
+      render: (row: any) => (
         <Badge
-          style={{ backgroundColor: FUEL_COLORS[v as keyof typeof FUEL_COLORS] + '20', color: FUEL_COLORS[v as keyof typeof FUEL_COLORS] }}
+          style={{ backgroundColor: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] + '20', color: FUEL_COLORS[row.fuelType as keyof typeof FUEL_COLORS] }}
         >
-          {v}
+          {row.fuelType}
         </Badge>
       ),
     },
-    { key: 'volume', label: '销售量(L)', render: (v: number) => formatVolume(v) },
-    { key: 'amount', label: '销售额(元)', render: (v: number) => formatCurrency(v) },
+    { key: 'volume', label: '销售量(L)', render: (row: any) => formatVolume(row.volume) },
+    { key: 'amount', label: '销售额(元)', render: (row: any) => formatCurrency(row.amount) },
     {
       key: 'proportion',
       label: '占比',
-      render: (_: any, row: any) => {
+      render: (row: any) => {
         const total = dailyReportData.totalVolume;
         return total > 0 ? `${(row.volume != null ? (row.volume / total) * 100 : null)?.toFixed(1) || '-'}%` : '0%';
       },
@@ -641,12 +641,12 @@ ${report.inventoryChanges.map((i) => `${i.tankNo}(${i.fuelType}): 期初 ${forma
                   data={dailyReportData.salesByFuel}
                   columns={[
                     { key: 'fuelType', label: '油品' },
-                    { key: 'volume', label: '销售量(L)', render: (v: number) => formatVolume(v) },
-                    { key: 'amount', label: '销售额(元)', render: (v: number) => formatCurrency(v) },
+                    { key: 'volume', label: '销售量(L)', render: (row: any) => formatVolume(row.volume) },
+                    { key: 'amount', label: '销售额(元)', render: (row: any) => formatCurrency(row.amount) },
                     {
                       key: 'avgPrice',
                       label: '平均单价',
-                      render: (_: any, row: any) => row.volume > 0 ? formatCurrency(row.amount / row.volume) : '-',
+                      render: (row: any) => row.volume > 0 ? formatCurrency(row.amount / row.volume) : '-',
                     },
                   ]}
                   pagination={false}
@@ -690,10 +690,10 @@ ${report.inventoryChanges.map((i) => `${i.tankNo}(${i.fuelType}): 期初 ${forma
                   columns={[
                     { key: 'tankNo', label: '油罐' },
                     { key: 'fuelType', label: '油品' },
-                    { key: 'startVolume', label: '期初库存(L)', render: (v: number) => formatVolume(v) },
-                    { key: 'deliveryVolume', label: '进油量(L)', render: (v: number) => formatVolume(v) },
-                    { key: 'salesVolume', label: '销售量(L)', render: (v: number) => formatVolume(v) },
-                    { key: 'endVolume', label: '期末库存(L)', render: (v: number) => formatVolume(v) },
+                    { key: 'startVolume', label: '期初库存(L)', render: (row: any) => formatVolume(row.startVolume) },
+                    { key: 'deliveryVolume', label: '进油量(L)', render: (row: any) => formatVolume(row.deliveryVolume) },
+                    { key: 'salesVolume', label: '销售量(L)', render: (row: any) => formatVolume(row.salesVolume) },
+                    { key: 'endVolume', label: '期末库存(L)', render: (row: any) => formatVolume(row.endVolume) },
                   ]}
                   pagination={false}
                 />

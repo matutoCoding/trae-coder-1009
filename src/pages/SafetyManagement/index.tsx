@@ -148,21 +148,21 @@ const SafetyManagementPage: React.FC = () => {
     {
       key: 'lastCheckDate',
       label: '上次检查',
-      render: (v: string) => v.split('T')[0],
+      render: (row: FireFacility) => row.lastCheckDate.split('T')[0],
     },
     {
       key: 'nextCheckDate',
       label: '下次检查',
-      render: (v: string) => v.split('T')[0],
+      render: (row: FireFacility) => row.nextCheckDate.split('T')[0],
     },
     {
       key: 'status',
       label: '状态',
-      render: (v: string) => (
+      render: (row: FireFacility) => (
         <Badge
-          variant={v === 'normal' ? 'success' : v === 'expiring' ? 'warning' : 'danger'}
+          variant={row.status === 'normal' ? 'success' : row.status === 'expiring' ? 'warning' : 'danger'}
         >
-          {v === 'normal' ? '正常' : v === 'expiring' ? '即将过期' : '已过期'}
+          {row.status === 'normal' ? '正常' : row.status === 'expiring' ? '即将过期' : '已过期'}
         </Badge>
       ),
     },
@@ -171,25 +171,25 @@ const SafetyManagementPage: React.FC = () => {
   const lightningColumns = [
     { key: 'location', label: '位置' },
     { key: 'type', label: '类型' },
-    { key: 'resistance', label: '接地电阻(Ω)', render: (v: number) => v?.toFixed(2) || '-' },
+    { key: 'resistance', label: '接地电阻(Ω)', render: (row: LightningProtection) => row.resistance?.toFixed(2) || '-' },
     {
       key: 'lastTestDate',
       label: '上次检测',
-      render: (v: string) => v.split('T')[0],
+      render: (row: LightningProtection) => row.lastTestDate.split('T')[0],
     },
     {
       key: 'nextTestDate',
       label: '下次检测',
-      render: (v: string) => v.split('T')[0],
+      render: (row: LightningProtection) => row.nextTestDate.split('T')[0],
     },
     {
       key: 'status',
       label: '状态',
-      render: (v: string) => (
+      render: (row: LightningProtection) => (
         <Badge
-          variant={v === 'normal' ? 'success' : v === 'expiring' ? 'warning' : 'danger'}
+          variant={row.status === 'normal' ? 'success' : row.status === 'expiring' ? 'warning' : 'danger'}
         >
-          {v === 'normal' ? '正常' : v === 'expiring' ? '即将过期' : '已过期'}
+          {row.status === 'normal' ? '正常' : row.status === 'expiring' ? '即将过期' : '已过期'}
         </Badge>
       ),
     },
@@ -199,28 +199,28 @@ const SafetyManagementPage: React.FC = () => {
     {
       key: 'type',
       label: '检查类型',
-      render: (v: string) => {
+      render: (row: SafetyCheck) => {
         const names: Record<string, string> = {
           fire: '消防检查',
           lightning: '防雷检查',
           delivery: '卸油监护',
           daily: '日常检查',
         };
-        return names[v] || v;
+        return names[row.type] || row.type;
       },
     },
     { key: 'checker', label: '检查人' },
     {
       key: 'checkDate',
       label: '检查时间',
-      render: (v: string) => formatDateTime(v),
+      render: (row: SafetyCheck) => formatDateTime(row.checkDate),
     },
     {
       key: 'result',
       label: '检查结果',
-      render: (v: string) => (
-        <Badge variant={v === 'pass' ? 'success' : v === 'warning' ? 'warning' : 'danger'}>
-          {v === 'pass' ? '合格' : v === 'warning' ? '有隐患' : '不合格'}
+      render: (row: SafetyCheck) => (
+        <Badge variant={row.result === 'pass' ? 'success' : row.result === 'warning' ? 'warning' : 'danger'}>
+          {row.result === 'pass' ? '合格' : row.result === 'warning' ? '有隐患' : '不合格'}
         </Badge>
       ),
     },
